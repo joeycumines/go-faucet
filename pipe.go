@@ -86,8 +86,6 @@ func (p *Pipe) Stop() {
 	p.close.Do(func() {
 		close(p.stop)
 	})
-
-	<-p.Done()
 }
 
 func (p *Pipe) ensure() {
