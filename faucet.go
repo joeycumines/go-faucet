@@ -8,12 +8,15 @@ import (
 
 type (
 	Pipe struct {
-		mutex   sync.Mutex
-		ticker  *time.Ticker
-		err     error
-		done    chan struct{}
-		stopped bool
-		stop    sync.Once
+		mutex sync.Mutex
+		open  sync.Once
+		close sync.Once
+
+		err  error
+		done chan struct{}
+		stop chan struct{}
+
+		ticker *time.Ticker
 		inputs []func(context.Context) (interface{}, bool, error)
 		outputs []func(context.Context, interface{}) error
 		ctx     context.Context

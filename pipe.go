@@ -79,19 +79,15 @@ func (p *Pipe) Start(ctx context.Context, rate time.Duration) {
 func (p *Pipe) Stop() {
 	p.ensure()
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	if p.ticker == nil {
 		panic(errors.New("faucet.Pipe.Stop not started"))
 	}
 
-	p.stopped = true
-
-	p.stop.Do(func() {
-		p.ticker.Stop()
-		close(p.done)
+	p.close.Do(func() {
+		close(p.stop)
 	})
+
+	<-p.Done()
 }
 
 func (p *Pipe) ensure() {
@@ -99,26 +95,20 @@ func (p *Pipe) ensure() {
 		panic(errors.New("faucet.Pipe nil receiver"))
 	}
 
-	if p.done != nil {
-		return
-	}
-
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	if p.done != nil {
-		return
-	}
-
-	p.done = make(chan struct{})
+	p.open.Do(func() {
+		p.stop = make(chan struct{})
+		p.done = make(chan struct{})
+	})
 }
 
 func (p *Pipe) cleanup() {
+	defer p.ticker.Stop()
 	defer p.Stop()
 	<-p.ctx.Done()
 }
 
 func (p *Pipe) worker() {
+	defer close(p.done)
 	defer p.cancel()
 
 	var err error
@@ -134,7 +124,7 @@ func (p *Pipe) worker() {
 		p.err = err
 	}()
 
-	for i := 0; err == nil && !p.stopped; i++ {
+	for i := 0; ; i++ {
 		err = p.ctx.Err()
 
 		if err != nil {
@@ -143,7 +133,7 @@ func (p *Pipe) worker() {
 		}
 
 		select {
-		case <-p.done:
+		case <-p.stop:
 			// stop has been called
 			return
 
@@ -154,18 +144,28 @@ func (p *Pipe) worker() {
 
 		case <-p.ticker.C:
 			// ticker has been triggered, poll inputs
-			func() {
+			if !func() bool {
 				p.mutex.Lock()
 				defer p.mutex.Unlock()
 
-				if p.stopped {
-					// avoid a race on stop, will exit without error
-					return
+				// double check if we are stopped (the channel might still have a tick after close)
+				select {
+				case <-p.stop:
+					return false
+
+				default:
 				}
 
 				inputLength, outputLength := len(p.inputs), len(p.outputs)
 
 				for j := 0; j < inputLength; j++ {
+					err = p.ctx.Err()
+
+					if err != nil {
+						err = fmt.Errorf("faucet.Pipe context error: %v", err)
+						return false
+					}
+
 					var (
 						value interface{}
 						ok    bool
@@ -178,7 +178,7 @@ func (p *Pipe) worker() {
 					if err != nil {
 						// input error, will exit with error
 						err = fmt.Errorf("faucet.Pipe.input.%d error: %v", x, err)
-						return
+						return false
 					}
 
 					if !ok {
@@ -190,7 +190,7 @@ func (p *Pipe) worker() {
 
 					if outputLength == 0 {
 						// nothing to fan out to, done for this tick
-						return
+						return true
 					}
 
 					errs := make(chan error, outputLength)
@@ -231,9 +231,14 @@ func (p *Pipe) worker() {
 					}
 
 					// fanned out all output, possibly with errors, done for this tick
-					return
+					return err == nil
 				}
-			}()
+
+				// did not retrieve any input (from any input), but no error, done for this tick
+				return true
+			}() {
+				return
+			}
 		}
 	}
 }
