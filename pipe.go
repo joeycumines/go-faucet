@@ -1,3 +1,19 @@
+/*
+   Copyright 2018 Joseph Cumines
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
 package faucet
 
 import (
@@ -7,6 +23,7 @@ import (
 	"fmt"
 )
 
+// AddInput adds fn to the pipe as input, note it will panic if fn or the pipe are nil.
 func (p *Pipe) AddInput(fn func(ctx context.Context) (interface{}, bool, error)) {
 	p.ensure()
 
@@ -20,6 +37,7 @@ func (p *Pipe) AddInput(fn func(ctx context.Context) (interface{}, bool, error))
 	p.inputs = append(p.inputs, fn)
 }
 
+// AddOutput adds fn to the pipe as output, note it will panic if fn or the pipe are nil.
 func (p *Pipe) AddOutput(fn func(ctx context.Context, value interface{}) error) {
 	p.ensure()
 
@@ -33,6 +51,7 @@ func (p *Pipe) AddOutput(fn func(ctx context.Context, value interface{}) error) 
 	p.outputs = append(p.outputs, fn)
 }
 
+// Err returns any internal error, which will be set on pipe worker failure, note it panics if the pipe is nil.
 func (p *Pipe) Err() error {
 	p.ensure()
 
@@ -42,6 +61,8 @@ func (p *Pipe) Err() error {
 	return p.err
 }
 
+// Done returns the internal "done" channel, that will be closed after the worker exits (never if the pipe is never
+// started), it will panic if the pipe is nil.
 func (p *Pipe) Done() <-chan struct{} {
 	p.ensure()
 
@@ -51,6 +72,8 @@ func (p *Pipe) Done() <-chan struct{} {
 	return p.done
 }
 
+// Start initialises the pipe worker with the provided context and duration, each pipe may be started exactly once,
+// and it will panic if ctx or the pipe are nil, or rate is note greater than zero.
 func (p *Pipe) Start(ctx context.Context, rate time.Duration) {
 	p.ensure()
 
@@ -76,6 +99,8 @@ func (p *Pipe) Start(ctx context.Context, rate time.Duration) {
 	go p.cleanup()
 }
 
+// Stop will prevent further ticks from succeeding (that are not already in progress), note it will panic if the
+// pipe is nil, or hasn't already been started.
 func (p *Pipe) Stop() {
 	p.ensure()
 
@@ -100,8 +125,11 @@ func (p *Pipe) ensure() {
 }
 
 func (p *Pipe) cleanup() {
-	defer p.ticker.Stop()
 	defer p.Stop()
+	defer func() {
+		<-p.done
+	}()
+	defer p.ticker.Stop()
 	<-p.ctx.Done()
 }
 
@@ -109,11 +137,14 @@ func (p *Pipe) worker() {
 	defer close(p.done)
 	defer p.cancel()
 
-	var err error
+	var (
+		err       error
+		lastInput int
+	)
 
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("faucet.Pipe recovered from panic (%T): %+v", r, r)
+			err = fmt.Errorf("faucet.Pipe.input.%d recovered from panic (%T): %+v", lastInput, r, r)
 		}
 
 		p.mutex.Lock()
@@ -169,13 +200,13 @@ func (p *Pipe) worker() {
 						ok    bool
 					)
 
-					x := (i + j) % inputLength
+					lastInput = (i + j) % inputLength
 
-					value, ok, err = p.inputs[x](p.ctx)
+					value, ok, err = p.inputs[lastInput](p.ctx)
 
 					if err != nil {
 						// input error, will exit with error
-						err = fmt.Errorf("faucet.Pipe.input.%d error: %v", x, err)
+						err = fmt.Errorf("faucet.Pipe.input.%d error: %v", lastInput, err)
 						return false
 					}
 
