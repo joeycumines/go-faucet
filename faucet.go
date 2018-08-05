@@ -30,6 +30,7 @@ type (
 	// outputs will receive the input, and must all return before the next tick is started.
 	// Basically, this implementation is geared towards fan-in to fan-out, allowing it to be used in a wide range
 	// of situations.
+	// Note that unlike time.Ticker it will start the first tick immediately on start.
 	Pipe struct {
 		mutex sync.Mutex
 		open  sync.Once

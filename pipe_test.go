@@ -83,6 +83,8 @@ func ExamplePipe_roundRobinPingPong() {
 	// pong: -2
 	// ping: 3
 	// pong: 3
+	// ping: -3
+	// pong: -3
 }
 
 func ExamplePipe_fallbackInputs() {
@@ -133,7 +135,7 @@ func ExamplePipe_fallbackInputs() {
 
 	pipe.Start(context.Background(), time.Millisecond*50)
 
-	time.Sleep(time.Second + (time.Millisecond * 25))
+	time.Sleep(time.Second - (time.Millisecond * 25))
 
 	pipe.Stop()
 
@@ -507,7 +509,7 @@ func TestPipe_noOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if count != 1 {
+	if count != 2 {
 		t.Fatal("unexpected count", count)
 	}
 }
