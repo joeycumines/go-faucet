@@ -12,15 +12,15 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
 package faucet
 
 import (
-	"time"
-	"errors"
 	"context"
+	"errors"
 	"fmt"
+	"time"
 )
 
 // AddInput adds fn to the pipe as input, note it will panic if fn or the pipe are nil.

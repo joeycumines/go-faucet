@@ -12,16 +12,16 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
 // Package faucet implements a simple pattern for polling based rate limiting, using Golang's time.Ticker.
 // Note that any nil arguments to any method or function in this package will trigger a panic.
 package faucet
 
 import (
+	"context"
 	"sync"
 	"time"
-	"context"
 )
 
 type (
@@ -40,8 +40,8 @@ type (
 		done chan struct{}
 		stop chan struct{}
 
-		ticker *time.Ticker
-		inputs []func(context.Context) (interface{}, bool, error)
+		ticker  *time.Ticker
+		inputs  []func(context.Context) (interface{}, bool, error)
 		outputs []func(context.Context, interface{}) error
 		ctx     context.Context
 		cancel  context.CancelFunc
